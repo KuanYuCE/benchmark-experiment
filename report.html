@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GCD 演算法效能實驗報告</title>
+<style>
+  :root {
+    --euc: #2563eb;
+    --bin: #16a34a;
+    --win: #b45309;
+    --bg:  #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --muted: #64748b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem 1rem;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+
+  h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: .25rem;
+  }
+  h2 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 2rem 0 .75rem;
+    padding-bottom: .4rem;
+    border-bottom: 2px solid var(--border);
+  }
+  h3 { font-size: 1rem; font-weight: 600; margin: 1.25rem 0 .5rem; color: var(--muted); }
+  .subtitle { color: var(--muted); margin-bottom: 2rem; font-size: .95rem; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  /* spec grid */
+  .spec-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: .75rem;
+  }
+  .spec-item { }
+  .spec-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .spec-value { font-weight: 600; font-size: .95rem; }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  thead th {
+    background: #f1f5f9;
+    padding: .55rem .75rem;
+    text-align: right;
+    font-weight: 600;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+  }
+  thead th:first-child { text-align: left; }
+  tbody td {
+    padding: .45rem .75rem;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody td:first-child { text-align: left; font-weight: 500; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #f8fafc; }
+
+  .winner-euc { color: var(--euc); font-weight: 700; }
+  .winner-bin { color: var(--bin); font-weight: 700; }
+  .highlight-row { background: #fefce8 !important; }
+  .highlight-row:hover { background: #fef9c3 !important; }
+
+  /* badge */
+  .badge {
+    display: inline-block;
+    padding: .15rem .55rem;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 600;
+  }
+  .badge-euc { background: #dbeafe; color: var(--euc); }
+  .badge-bin { background: #dcfce7; color: var(--bin); }
+
+  /* algo boxes */
+  .algo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 600px) { .algo-grid { grid-template-columns: 1fr; } }
+  .algo-box { border-radius: 8px; padding: 1rem 1.25rem; }
+  .algo-box.euc { border-left: 4px solid var(--euc); background: #eff6ff; }
+  .algo-box.bin { border-left: 4px solid var(--bin); background: #f0fdf4; }
+  .algo-box h4 { font-size: .9rem; font-weight: 700; margin-bottom: .4rem; }
+  .algo-box pre {
+    font-size: .8rem;
+    background: rgba(0,0,0,.05);
+    border-radius: 4px;
+    padding: .4rem .6rem;
+    overflow-x: auto;
+    margin: .5rem 0;
+  }
+  .algo-box p { font-size: .85rem; color: var(--muted); }
+
+  /* conclusion */
+  .verdict {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: .75rem;
+  }
+  @media (max-width: 600px) { .verdict { grid-template-columns: 1fr; } }
+  .verdict-box {
+    border-radius: 8px;
+    padding: .9rem 1.1rem;
+  }
+  .verdict-box.wrong { background: #fef2f2; border: 1px solid #fca5a5; }
+  .verdict-box.correct { background: #f0fdf4; border: 1px solid #86efac; }
+  .verdict-box .tag { font-size: .8rem; font-weight: 700; margin-bottom: .3rem; }
+  .verdict-box.wrong .tag { color: #b91c1c; }
+  .verdict-box.correct .tag { color: #15803d; }
+  .verdict-box p { font-size: .87rem; }
+
+  /* micro bench */
+  .micro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 500px) { .micro-grid { grid-template-columns: 1fr; } }
+  .micro-box {
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+    border: 1px solid var(--border);
+  }
+  .micro-box .ns { font-size: 2rem; font-weight: 700; }
+  .micro-box .label { font-size: .8rem; color: var(--muted); margin-top: .2rem; }
+  .micro-box.fast .ns { color: var(--euc); }
+  .micro-box.slow .ns { color: #dc2626; }
+  .multiplier {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--win);
+    padding: .5rem;
+    align-self: center;
+  }
+
+  code { background: #f1f5f9; padding: .1rem .3rem; border-radius: 3px; font-size: .85em; }
+  .note { font-size: .8rem; color: var(--muted); margin-top: .5rem; }
+  footer { margin-top: 3rem; text-align: center; font-size: .8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>GCD 演算法效能實驗報告</h1>
+  <p class="subtitle">Binary GCD (Stein's Algorithm) vs. Euclidean GCD &nbsp;·&nbsp; 2026-05-24</p>
+
+  <!-- Environment -->
+  <h2>實驗環境</h2>
+  <div class="card">
+    <div class="spec-grid">
+      <div class="spec-item">
+        <div class="spec-label">CPU</div>
+        <div class="spec-value">AMD Ryzen 7 5800X</div>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">vCPU（VM）</div>
+        <div class="spec-value">2</div>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">架構</div>
+        <div class="spec-value">x86-64</div>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">記憶體</div>
+        <div class="spec-value">7.7 GiB</div>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">OS</div>
+        <div class="spec-value">Ubuntu 24.04</div>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">Kernel</div>
+        <div class="spec-value">Linux 6.17.0-23-generic</div>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">編譯器</div>
+        <div class="spec-value">GCC 13.3.0</div>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">編譯旗標</div>
+        <div class="spec-value">-O2</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Algorithms -->
+  <h2>演算法</h2>
+  <div class="algo-grid">
+    <div class="algo-box euc">
+      <h4>Euclidean GCD</h4>
+      <pre>gcd(a, b) = gcd(b, a % b)</pre>
+      <p>關鍵成本：<strong>modulo 運算</strong>，直接對應 CPU 除法指令。</p>
+    </div>
+    <div class="algo-box bin">
+      <h4>Binary GCD（Stein's）</h4>
+      <pre>用 >> 和 -= 取代 %</pre>
+      <p>關鍵成本：<strong>位移與減法</strong>，在 64-bit 硬體上均為單週期。</p>
+    </div>
+  </div>
+
+  <!-- Methodology -->
+  <h2>Benchmark 方法論</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th style="text-align:left">項目</th><th style="text-align:left">做法</th></tr></thead>
+      <tbody>
+        <tr><td>計時工具</td><td><code>clock_gettime(CLOCK_MONOTONIC)</code></td></tr>
+        <tr><td>資料產生</td><td>xorshift64 RNG，seed=42，事先產完放入陣列（產生成本不計入計時）</td></tr>
+        <tr><td>計時 pass</td><td>純計算，無 instrumentation overhead</td></tr>
+        <tr><td>計次 pass</td><td>獨立跑一遍，<code>++count</code> 不污染計時數據</td></tr>
+        <tr><td>防最佳化</td><td><code>volatile sink</code> XOR 每個結果，阻止編譯器 dead-code elimination</td></tr>
+        <tr><td>樣本數</td><td>每個 tier 1,000 萬對隨機數</td></tr>
+        <tr><td>perf</td><td>VM 的 <code>perf_event_paranoid=4</code>，無法存取 hardware counter，改用 div_cost micro-benchmark</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Main Results -->
+  <h2>實驗結果</h2>
+  <h3>主要 Benchmark（10M 對 / tier）</h3>
+  <div class="card" style="padding: 0; overflow: hidden;">
+    <table>
+      <thead>
+        <tr>
+          <th>Tier</th>
+          <th>Euc 時間</th>
+          <th>Euc ops/call</th>
+          <th>Bin 時間</th>
+          <th>Bin ops/call</th>
+          <th>t_ratio</th>
+          <th>ops_ratio</th>
+          <th>勝者</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>8-bit</td>  <td>0.169s</td><td>4.9</td>  <td>0.170s</td><td>5.7</td>  <td>0.993</td><td>0.861</td><td><span class="badge badge-euc">EUCLIDEAN</span></td></tr>
+        <tr><td>16-bit</td> <td>0.312s</td><td>9.6</td>  <td>0.346s</td><td>11.4</td> <td>0.900</td><td>0.846</td><td><span class="badge badge-euc">EUCLIDEAN</span></td></tr>
+        <tr><td>24-bit</td> <td>0.451s</td><td>14.3</td> <td>0.514s</td><td>17.0</td> <td>0.877</td><td>0.839</td><td><span class="badge badge-euc">EUCLIDEAN</span></td></tr>
+        <tr><td>32-bit</td> <td>0.586s</td><td>19.0</td> <td>0.665s</td><td>22.7</td> <td>0.881</td><td>0.836</td><td><span class="badge badge-euc">EUCLIDEAN</span></td></tr>
+        <tr><td>40-bit</td> <td>0.679s</td><td>23.6</td> <td>0.815s</td><td>28.3</td> <td>0.833</td><td>0.835</td><td><span class="badge badge-euc">EUCLIDEAN</span></td></tr>
+        <tr><td>48-bit</td> <td>0.747s</td><td>28.3</td> <td>0.966s</td><td>34.0</td> <td>0.774</td><td>0.833</td><td><span class="badge badge-euc">EUCLIDEAN</span></td></tr>
+        <tr><td>56-bit</td> <td>0.847s</td><td>33.0</td> <td>1.121s</td><td>39.6</td> <td>0.755</td><td>0.832</td><td><span class="badge badge-euc">EUCLIDEAN</span></td></tr>
+        <tr><td>64-bit</td> <td>0.968s</td><td>37.6</td> <td>1.277s</td><td>45.3</td> <td>0.757</td><td>0.832</td><td><span class="badge badge-euc">EUCLIDEAN</span></td></tr>
+        <tr class="highlight-row">
+          <td><strong>128-bit</strong></td>
+          <td><strong>3.477s</strong></td><td><strong>75.0</strong></td>
+          <td><strong>3.269s</strong></td><td><strong>90.4</strong></td>
+          <td><strong>1.063</strong></td><td><strong>0.830</strong></td>
+          <td><span class="badge badge-bin">BINARY</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note" style="padding: .6rem 1rem;">
+      t_ratio = euc_time / bin_time（&gt;1 表示 Binary 較快）&emsp;
+      ops_ratio = euc_ops / bin_ops（&lt;1 表示 Euclidean iteration 次數較少）
+    </p>
+  </div>
+
+  <!-- Micro bench -->
+  <h3>除法原始成本 Micro-benchmark（50M 次單一 mod）</h3>
+  <div class="card">
+    <div class="micro-grid" style="align-items:center;">
+      <div class="micro-box fast">
+        <div class="ns">1.7 ns</div>
+        <div class="label">64-bit <code>%</code>（硬體 div 指令）</div>
+      </div>
+      <div class="micro-box slow">
+        <div class="ns">4.6 ns</div>
+        <div class="label">128-bit <code>%</code>（libgcc <code>__udivti3</code> 軟體模擬）</div>
+      </div>
+    </div>
+    <p style="text-align:center; margin-top:1rem; font-weight:700; color: var(--win); font-size:1.05rem;">
+      128-bit 除法比 64-bit 貴 2.8×
+    </p>
+  </div>
+
+  <!-- Analysis -->
+  <h2>分析與結論</h2>
+  <div class="card">
+    <p style="margin-bottom:.75rem;">
+      <strong>ops_ratio 全程穩定在 ~0.83：</strong>
+      無論幾 bit，Euclidean 永遠比 Binary 少做約 17% 的 iteration。
+      演算法層次上，Euclidean 本來就更精簡。
+    </p>
+    <p style="margin-bottom:.75rem;">
+      <strong>64-bit 以下 Euclidean 贏：</strong>
+      硬體除法器快（1.7 ns/op），iteration 少 + 每次 op 便宜 = 雙重優勢。
+    </p>
+    <p>
+      <strong>128-bit 翻轉：</strong>
+      <code>__uint128_t % __uint128_t</code> 觸發 libgcc 的 <code>__udivti3</code> 軟體模擬（4.6 ns/op）。
+      此時 Euclidean 每次 mod 成本暴增，Binary 的位移操作仍是單週期，最終翻盤。
+    </p>
+  </div>
+
+  <h3>修正後的假說</h3>
+  <div class="verdict">
+    <div class="verdict-box wrong">
+      <div class="tag">❌ 原始假說（不正確）</div>
+      <p>「數字越大 → Binary 贏」</p>
+    </div>
+    <div class="verdict-box correct">
+      <div class="tag">✅ 修正假說（正確）</div>
+      <p>「除法指令越貴 → Binary 贏」</p>
+    </div>
+  </div>
+  <p class="note" style="margin-top:.75rem;">
+    在現代 x86-64 硬體上，64-bit 硬體除法器快到讓 Euclidean 在整個原生寬度都保有優勢。
+    交叉點出現在「溢出硬體除法器寬度」的時候，不是「數字變大」本身。
+  </p>
+
+  <footer>
+    實驗程式碼：gcd_bench.c · div_cost.c &nbsp;·&nbsp; GCC 13.3.0 -O2 &nbsp;·&nbsp; AMD Ryzen 7 5800X / x86-64
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# compiled binaries
+gcd_bench
+div_cost
+
+# generated assembly
+*.s
+
+# claude memory
+.claude/

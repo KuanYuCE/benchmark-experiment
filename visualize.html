@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GCD Benchmark — 視覺化</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --euc: #2563eb;
+    --bin: #16a34a;
+    --ratio: #d97706;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --muted: #64748b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 2rem 1rem;
+  }
+  .container { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; font-weight: 700; }
+  .subtitle { color: var(--muted); font-size: .9rem; margin: .3rem 0 2rem; }
+  h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: 1rem; color: var(--text); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+  }
+  .card-full { margin-bottom: 1.25rem; }
+
+  .legend {
+    display: flex; gap: 1.25rem; flex-wrap: wrap;
+    margin-bottom: 1rem; font-size: .82rem;
+  }
+  .legend-item { display: flex; align-items: center; gap: .4rem; }
+  .legend-dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* annotation band */
+  .annotation {
+    margin-top: .85rem;
+    padding: .6rem .9rem;
+    border-radius: 7px;
+    font-size: .82rem;
+    line-height: 1.5;
+  }
+  .ann-amber { background: #fef9c3; border-left: 3px solid #ca8a04; color: #78350f; }
+  .ann-blue  { background: #eff6ff; border-left: 3px solid #2563eb; color: #1e3a8a; }
+  .ann-green { background: #f0fdf4; border-left: 3px solid #16a34a; color: #14532d; }
+
+  /* stat row */
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: .75rem;
+    margin-bottom: 1.25rem;
+  }
+  .stat-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .9rem 1.1rem;
+    text-align: center;
+  }
+  .stat-box .val { font-size: 1.6rem; font-weight: 700; }
+  .stat-box .lbl { font-size: .75rem; color: var(--muted); margin-top: .2rem; }
+  .euc-color { color: var(--euc); }
+  .bin-color { color: var(--bin); }
+  .ratio-color { color: var(--ratio); }
+
+  /* crossover marker */
+  .crossover-banner {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border: 1px solid #f59e0b;
+    border-radius: 10px;
+    padding: .85rem 1.2rem;
+    margin-bottom: 1.25rem;
+    font-size: .88rem;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+  }
+  .crossover-banner .icon { font-size: 1.4rem; }
+
+  footer { margin-top: 2.5rem; text-align: center; font-size: .78rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>GCD Benchmark 視覺化</h1>
+  <p class="subtitle">Binary GCD (Stein's) vs. Euclidean GCD &nbsp;·&nbsp; AMD Ryzen 7 5800X / x86-64 / GCC 13.3.0 -O2 &nbsp;·&nbsp; 10M 對/tier</p>
+
+  <!-- Key stats -->
+  <div class="stat-row">
+    <div class="stat-box">
+      <div class="val euc-color">8</div>
+      <div class="lbl">Euclidean 勝出的 tier 數</div>
+    </div>
+    <div class="stat-box">
+      <div class="val bin-color">1</div>
+      <div class="lbl">Binary 勝出的 tier 數（128-bit）</div>
+    </div>
+    <div class="stat-box">
+      <div class="val ratio-color">2.8×</div>
+      <div class="lbl">128-bit 除法比 64-bit 貴幾倍</div>
+    </div>
+  </div>
+
+  <!-- Crossover banner -->
+  <div class="crossover-banner">
+    <span class="icon">⚡</span>
+    <span>
+      <strong>交叉點出現在 128-bit</strong>——
+      t_ratio 從 64-bit 的 0.757 翻升至 1.063，原因是 128-bit mod 觸發 libgcc <code>__udivti3</code> 軟體模擬（4.6 ns vs 1.7 ns）。
+    </span>
+  </div>
+
+  <!-- Chart 1: Wall-clock time -->
+  <div class="card card-full">
+    <h2>牆鐘時間比較（秒，越低越好）</h2>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--euc)"></div>Euclidean</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--bin)"></div>Binary (Stein's)</div>
+    </div>
+    <canvas id="chartTime" height="90"></canvas>
+    <div class="annotation ann-amber">
+      128-bit Euclidean 時間（3.48s）是 64-bit 的 3.6×，主因是每次 mod 從硬體指令（1.7 ns）變成軟體模擬（4.6 ns）。
+      Binary 的 128-bit 成本僅 3.3×，因為位移操作不受影響。
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- Chart 2: t_ratio -->
+    <div class="card">
+      <h2>t_ratio（euc / bin，>1 表示 Binary 勝）</h2>
+      <canvas id="chartRatio" height="200"></canvas>
+      <div class="annotation ann-blue">
+        ratio 從 8-bit 的 ~1.0 持續下滑至 64-bit 的 0.757，
+        表示隨著數字增大 Euclidean 的優勢其實在擴大——
+        直到 128-bit 才反轉。
+      </div>
+    </div>
+
+    <!-- Chart 3: ops/call -->
+    <div class="card">
+      <h2>平均 ops/call（iteration 次數）</h2>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--euc)"></div>Euclidean</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--bin)"></div>Binary</div>
+      </div>
+      <canvas id="chartOps" height="200"></canvas>
+      <div class="annotation ann-green">
+        ops_ratio 全程穩定在 ~0.83，
+        代表 Euclidean 在所有 tier 都比 Binary 少做約 17% 的 iteration。
+        Binary 贏靠的不是「更少操作」，而是每次操作更便宜。
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart 4: ops_ratio trend -->
+  <div class="card card-full">
+    <h2>ops_ratio 趨勢（euc_ops / bin_ops）</h2>
+    <canvas id="chartOpsRatio" height="80"></canvas>
+    <div class="annotation ann-green">
+      ops_ratio 幾乎是水平線（0.830–0.861），說明兩個演算法的 iteration 比例是固定的，
+      與數字大小無關。時間上的勝負完全由每次操作的硬體成本決定。
+    </div>
+  </div>
+
+  <!-- Chart 5: div cost micro-bench -->
+  <div class="card card-full">
+    <h2>除法原始成本 Micro-benchmark（ns/op）</h2>
+    <canvas id="chartDiv" height="75"></canvas>
+    <div class="annotation ann-amber">
+      這是 Binary 在 128-bit 翻盤的直接原因：軟體模擬除法比硬體除法貴 2.8×，
+      而 Binary GCD 的位移/減法操作成本完全不受影響。
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Section 2: GMP                                              -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div style="margin:2.5rem 0 1.25rem; border-top:2px solid var(--border); padding-top:1.5rem;">
+    <h1 style="font-size:1.3rem;">Section 2：GMP 任意精度（mpz_t）</h1>
+    <p class="subtitle" style="margin-top:.3rem;">
+      mpz_gcd（GMP 內建：Lehmer + HGCD）vs. hybrid_gcd（euc64 / bin128 / mpz_gcd 分層派發）
+      &nbsp;·&nbsp; 各 tier 樣本數：64–128-bit 50萬對、256-bit 50萬、512-bit 20萬、1024-bit 10萬、2048-bit 5萬
+    </p>
+  </div>
+
+  <!-- GMP key findings -->
+  <div class="stat-row" style="grid-template-columns: repeat(3,1fr);">
+    <div class="stat-box">
+      <div class="val" style="color:#dc2626;">0.59×</div>
+      <div class="lbl">hybrid 在 128-bit tier 的 speedup<br>（GMP 大幅勝出）</div>
+    </div>
+    <div class="stat-box">
+      <div class="val" style="color:#16a34a;">~1.00×</div>
+      <div class="lbl">256-bit 以上的 speedup<br>（兩者幾乎相同）</div>
+    </div>
+    <div class="stat-box">
+      <div class="val" style="color:var(--muted);">內建</div>
+      <div class="lbl">GMP 已在 mpz_gcd 內部<br>實作分層 fast path</div>
+    </div>
+  </div>
+
+  <div class="crossover-banner" style="background:linear-gradient(135deg,#fce7f3,#fbcfe8); border-color:#ec4899;">
+    <span class="icon">🔍</span>
+    <span>
+      <strong>意外發現：GMP 在 64/128-bit 反而比 hybrid 快。</strong>
+      GMP 的 <code>mpz_gcd</code> 內部已有高度最佳化的 1-limb 路徑（<code>mpn_gcd_1</code>）與 2-limb 路徑，
+      比我們手寫 dispatch + <code>mpz_to_u128</code> / <code>u128_to_mpz</code> 轉換成本還低。
+      Hybrid 的價值在於<strong>避免進入 mpz_t 世界</strong>，而非在 GMP 內部插一層。
+    </span>
+  </div>
+
+  <!-- Chart 6: GMP time comparison -->
+  <div class="card card-full">
+    <h2>GMP tiers：牆鐘時間（秒，越低越好）</h2>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>mpz_gcd（GMP 內建）</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>hybrid_gcd（分層派發）</div>
+    </div>
+    <canvas id="chartGmpTime" height="90"></canvas>
+    <div class="annotation ann-amber">
+      64/128-bit：hybrid 反而較慢（轉換 overhead 抵消了 fast path 節省的計算）。
+      256-bit 起兩者幾乎貼合，因為 hybrid 直接 fall-through 到 <code>mpz_gcd</code>，
+      只多了 2 次 <code>mpz_size()</code> 比較的微小 overhead。
+    </div>
+  </div>
+
+  <!-- Chart 7: GMP speedup ratio -->
+  <div class="card card-full">
+    <h2>hybrid speedup（mpz_gcd 時間 / hybrid 時間，>1 表示 hybrid 勝）</h2>
+    <canvas id="chartGmpSpeedup" height="80"></canvas>
+    <div class="annotation ann-blue">
+      64/128-bit 的 speedup 遠低於 1.0，說明 GMP 對小數字有更好的內部 fast path。
+      256-bit 以上 speedup 穩定在 1.0 ± 0.01（noise 等級），hybrid fall-through 的 overhead 幾乎為零。
+    </div>
+  </div>
+
+  <!-- Chart 8: GMP scaling -->
+  <div class="card card-full">
+    <h2>mpz_gcd 隨位元寬的時間縮放（GMP Lehmer/HGCD 演算法行為）</h2>
+    <canvas id="chartGmpScale" height="80"></canvas>
+    <div class="annotation ann-green">
+      256-bit → 2048-bit 的時間縮放相對平緩（非線性成長），反映 GMP Lehmer 演算法的高效率。
+      若用 naive Euclidean with <code>mpz_mod</code>，此處會呈現 O(n²) 的急劇增長。
+    </div>
+  </div>
+
+  <footer>
+    資料來源：results.csv · div_cost micro-benchmark &nbsp;·&nbsp;
+    AMD Ryzen 7 5800X / Linux 6.17.0 / GCC 13.3.0 -O2
+  </footer>
+
+</div>
+
+<script>
+const TIERS = ['8-bit','16-bit','24-bit','32-bit','40-bit','48-bit','56-bit','64-bit','128-bit'];
+const EUC_TIME  = [0.1686,0.3116,0.4507,0.5858,0.6785,0.7473,0.8466,0.9675,3.4766];
+const BIN_TIME  = [0.1698,0.3463,0.5141,0.6645,0.8147,0.9655,1.1212,1.2775,3.2693];
+const T_RATIO   = [0.9925,0.8998,0.8767,0.8815,0.8329,0.7740,0.7551,0.7573,1.0634];
+const EUC_OPS   = [4.929,9.606,14.280,18.954,23.628,28.301,32.973,37.647,75.033];
+const BIN_OPS   = [5.722,11.361,17.017,22.664,28.312,33.959,39.608,45.255,90.438];
+const OPS_RATIO = [0.8613,0.8455,0.8392,0.8363,0.8346,0.8334,0.8325,0.8319,0.8297];
+
+const EUC_COLOR     = 'rgba(37,99,235,0.85)';
+const EUC_COLOR_L   = 'rgba(37,99,235,0.15)';
+const BIN_COLOR     = 'rgba(22,163,74,0.85)';
+const BIN_COLOR_L   = 'rgba(22,163,74,0.15)';
+const RATIO_COLOR   = 'rgba(217,119,6,0.85)';
+const RATIO_COLOR_L = 'rgba(217,119,6,0.15)';
+
+// background colors per bar: highlight 128-bit
+function barColors(base, light, n) {
+  return Array.from({length: n}, (_, i) => i === n-1 ? base : light);
+}
+
+const defaults = {
+  responsive: true,
+  plugins: {
+    legend: { display: false },
+    tooltip: { mode: 'index', intersect: false }
+  },
+  scales: {
+    x: { grid: { display: false } },
+    y: { grid: { color: '#f1f5f9' } }
+  }
+};
+
+/* Chart 1 — time grouped bar */
+new Chart(document.getElementById('chartTime'), {
+  type: 'bar',
+  data: {
+    labels: TIERS,
+    datasets: [
+      {
+        label: 'Euclidean',
+        data: EUC_TIME,
+        backgroundColor: TIERS.map((_, i) => i === 8 ? 'rgba(37,99,235,0.9)' : 'rgba(37,99,235,0.55)'),
+        borderColor: EUC_COLOR,
+        borderWidth: 1,
+        borderRadius: 4,
+      },
+      {
+        label: 'Binary',
+        data: BIN_TIME,
+        backgroundColor: TIERS.map((_, i) => i === 8 ? 'rgba(22,163,74,0.9)' : 'rgba(22,163,74,0.55)'),
+        borderColor: BIN_COLOR,
+        borderWidth: 1,
+        borderRadius: 4,
+      }
+    ]
+  },
+  options: {
+    ...defaults,
+    plugins: {
+      ...defaults.plugins,
+      legend: { display: true, labels: { boxWidth: 12, font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(3)}s`
+        }
+      }
+    },
+    scales: {
+      ...defaults.scales,
+      y: { ...defaults.scales.y, title: { display: true, text: '秒 (s)' } }
+    }
+  }
+});
+
+/* Chart 2 — t_ratio line with threshold */
+new Chart(document.getElementById('chartRatio'), {
+  type: 'line',
+  data: {
+    labels: TIERS,
+    datasets: [
+      {
+        label: 't_ratio',
+        data: T_RATIO,
+        borderColor: RATIO_COLOR,
+        backgroundColor: RATIO_COLOR_L,
+        pointBackgroundColor: T_RATIO.map(v => v > 1 ? 'rgba(22,163,74,1)' : 'rgba(217,119,6,1)'),
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        fill: false,
+        tension: 0.3,
+      },
+      {
+        label: '基準線 (1.0)',
+        data: Array(9).fill(1.0),
+        borderColor: 'rgba(100,116,139,0.4)',
+        borderDash: [6, 4],
+        pointRadius: 0,
+        fill: false,
+      }
+    ]
+  },
+  options: {
+    ...defaults,
+    plugins: {
+      ...defaults.plugins,
+      legend: { display: true, labels: { boxWidth: 12, font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: ctx => ctx.datasetIndex === 0
+            ? ` t_ratio: ${ctx.parsed.y.toFixed(4)}  ${ctx.parsed.y > 1 ? '← Binary 贏' : ''}`
+            : null
+        }
+      }
+    },
+    scales: {
+      ...defaults.scales,
+      y: {
+        ...defaults.scales.y,
+        min: 0.6, max: 1.15,
+        title: { display: true, text: 'euc / bin' }
+      }
+    }
+  }
+});
+
+/* Chart 3 — ops/call grouped bar */
+new Chart(document.getElementById('chartOps'), {
+  type: 'bar',
+  data: {
+    labels: TIERS,
+    datasets: [
+      {
+        label: 'Euclidean',
+        data: EUC_OPS,
+        backgroundColor: 'rgba(37,99,235,0.6)',
+        borderColor: EUC_COLOR,
+        borderWidth: 1,
+        borderRadius: 4,
+      },
+      {
+        label: 'Binary',
+        data: BIN_OPS,
+        backgroundColor: 'rgba(22,163,74,0.6)',
+        borderColor: BIN_COLOR,
+        borderWidth: 1,
+        borderRadius: 4,
+      }
+    ]
+  },
+  options: {
+    ...defaults,
+    plugins: {
+      ...defaults.plugins,
+      legend: { display: true, labels: { boxWidth: 12, font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} ops`
+        }
+      }
+    },
+    scales: {
+      ...defaults.scales,
+      y: { ...defaults.scales.y, title: { display: true, text: 'ops/call' } }
+    }
+  }
+});
+
+/* Chart 4 — ops_ratio flat line */
+new Chart(document.getElementById('chartOpsRatio'), {
+  type: 'line',
+  data: {
+    labels: TIERS,
+    datasets: [
+      {
+        label: 'ops_ratio (euc/bin)',
+        data: OPS_RATIO,
+        borderColor: 'rgba(22,163,74,0.9)',
+        backgroundColor: 'rgba(22,163,74,0.08)',
+        pointBackgroundColor: 'rgba(22,163,74,1)',
+        pointRadius: 4,
+        fill: true,
+        tension: 0.2,
+      }
+    ]
+  },
+  options: {
+    ...defaults,
+    plugins: {
+      ...defaults.plugins,
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ops_ratio: ${ctx.parsed.y.toFixed(4)}`
+        }
+      }
+    },
+    scales: {
+      ...defaults.scales,
+      y: {
+        ...defaults.scales.y,
+        min: 0.75, max: 0.95,
+        title: { display: true, text: 'euc_ops / bin_ops' }
+      }
+    }
+  }
+});
+
+/* ── GMP data ── */
+const GMP_TIERS   = ['gmp-64','gmp-128','gmp-256','gmp-512','gmp-1024','gmp-2048'];
+const GMP_TIME    = [0.044, 0.103, 0.486, 0.432, 0.464, 0.512];
+const HYB_TIME    = [0.050, 0.175, 0.488, 0.435, 0.463, 0.514];
+const GMP_SPEEDUP = [0.885, 0.590, 0.996, 0.993, 1.002, 0.996];
+const HYB_PATH    = ['→ euc64','→ bin128','→ mpz_gcd','→ mpz_gcd','→ mpz_gcd','→ mpz_gcd'];
+
+const GMP_COLOR  = 'rgba(124,58,237,0.75)';
+const GMP_COLOR2 = 'rgba(124,58,237,0.4)';
+const HYB_COLOR  = 'rgba(249,115,22,0.75)';
+const HYB_COLOR2 = 'rgba(249,115,22,0.4)';
+
+/* Chart 6 — GMP time grouped bar */
+new Chart(document.getElementById('chartGmpTime'), {
+  type: 'bar',
+  data: {
+    labels: GMP_TIERS,
+    datasets: [
+      {
+        label: 'mpz_gcd',
+        data: GMP_TIME,
+        backgroundColor: GMP_TIERS.map((_, i) => i < 2 ? GMP_COLOR : GMP_COLOR2),
+        borderColor: 'rgba(124,58,237,1)',
+        borderWidth: 1, borderRadius: 4,
+      },
+      {
+        label: 'hybrid_gcd',
+        data: HYB_TIME,
+        backgroundColor: GMP_TIERS.map((_, i) => i < 2 ? HYB_COLOR : HYB_COLOR2),
+        borderColor: 'rgba(249,115,22,1)',
+        borderWidth: 1, borderRadius: 4,
+      }
+    ]
+  },
+  options: {
+    ...defaults,
+    plugins: {
+      ...defaults.plugins,
+      legend: { display: true, labels: { boxWidth: 12, font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          afterBody: ctx => `  hybrid 路徑: ${HYB_PATH[ctx[0].dataIndex]}`,
+          label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(3)}s`
+        }
+      }
+    },
+    scales: {
+      ...defaults.scales,
+      y: { ...defaults.scales.y, title: { display: true, text: '秒 (s)' } }
+    }
+  }
+});
+
+/* Chart 7 — GMP speedup ratio */
+new Chart(document.getElementById('chartGmpSpeedup'), {
+  type: 'bar',
+  data: {
+    labels: GMP_TIERS,
+    datasets: [
+      {
+        label: 'speedup (mpz_gcd / hybrid)',
+        data: GMP_SPEEDUP,
+        backgroundColor: GMP_SPEEDUP.map(v =>
+          v >= 1.0 ? 'rgba(22,163,74,0.7)' : 'rgba(220,38,38,0.7)'),
+        borderColor: GMP_SPEEDUP.map(v =>
+          v >= 1.0 ? 'rgba(22,163,74,1)' : 'rgba(220,38,38,1)'),
+        borderWidth: 1, borderRadius: 4,
+      },
+      {
+        label: '基準線 (1.0)',
+        data: Array(6).fill(1.0),
+        type: 'line',
+        borderColor: 'rgba(100,116,139,0.5)',
+        borderDash: [6, 4],
+        pointRadius: 0,
+        fill: false,
+      }
+    ]
+  },
+  options: {
+    ...defaults,
+    plugins: {
+      ...defaults.plugins,
+      legend: { display: true, labels: { boxWidth: 12, font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: ctx => ctx.datasetIndex === 0
+            ? ` speedup: ${ctx.parsed.y.toFixed(3)}  ${HYB_PATH[ctx.dataIndex]}`
+            : null
+        }
+      }
+    },
+    scales: {
+      ...defaults.scales,
+      y: { ...defaults.scales.y, min: 0.4, max: 1.2,
+           title: { display: true, text: 'mpz_gcd_t / hybrid_t' } }
+    }
+  }
+});
+
+/* Chart 8 — GMP scaling (mpz_gcd only, log x-axis implied by label) */
+new Chart(document.getElementById('chartGmpScale'), {
+  type: 'line',
+  data: {
+    labels: GMP_TIERS,
+    datasets: [
+      {
+        label: 'mpz_gcd 時間 (s)',
+        data: GMP_TIME,
+        borderColor: 'rgba(124,58,237,0.9)',
+        backgroundColor: 'rgba(124,58,237,0.08)',
+        pointBackgroundColor: 'rgba(124,58,237,1)',
+        pointRadius: 5,
+        fill: true,
+        tension: 0.3,
+      }
+    ]
+  },
+  options: {
+    ...defaults,
+    plugins: {
+      ...defaults.plugins,
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.parsed.y.toFixed(3)}s`
+        }
+      }
+    },
+    scales: {
+      ...defaults.scales,
+      y: { ...defaults.scales.y, title: { display: true, text: '秒 (s)' } }
+    }
+  }
+});
+
+/* Chart 5 — div cost horizontal bar */
+new Chart(document.getElementById('chartDiv'), {
+  type: 'bar',
+  data: {
+    labels: ['64-bit mod（硬體 div）', '128-bit mod（libgcc __udivti3）'],
+    datasets: [{
+      label: 'ns/op',
+      data: [1.7, 4.6],
+      backgroundColor: ['rgba(37,99,235,0.7)', 'rgba(220,38,38,0.7)'],
+      borderColor:     ['rgba(37,99,235,1)',   'rgba(220,38,38,1)'],
+      borderWidth: 1,
+      borderRadius: 6,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: { label: ctx => ` ${ctx.parsed.x} ns/op` }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: '#f1f5f9' },
+        title: { display: true, text: 'ns / operation' },
+        max: 6
+      },
+      y: { grid: { display: false } }
+    }
+  }
+});
+</script>
+</body>
+</html>
